@@ -6,14 +6,11 @@ import pandas as pd
 import streamlit as st
 import kagglehub
 
-# Machine Learning Framework
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 
-# ==========================================
-# 1. KAGGLE DATASET DOWNLOAD & PREPROCESSING
-# ==========================================
+
 @st.cache_data
 def fetch_kaggle_dataset():
     """
@@ -21,20 +18,20 @@ def fetch_kaggle_dataset():
     from Kaggle using official kagglehub tooling.
     Pure data-fetching function with NO Streamlit UI elements inside.
     """
-    # Download dataset files directly from Kaggle
+
     dataset_dir = kagglehub.dataset_download("suraj520/customer-support-ticket-dataset")
     csv_path = os.path.join(dataset_dir, "customer_support_tickets.csv")
     
     df = pd.read_csv(csv_path)
 
-    # Locate relevant Kaggle columns
+   
     desc_col = 'Ticket Description' if 'Ticket Description' in df.columns else 'Ticket Subject'
     type_col = 'Ticket Type' if 'Ticket Type' in df.columns else 'Category'
     prio_col = 'Ticket Priority' if 'Ticket Priority' in df.columns else 'Priority'
 
     df = df.dropna(subset=[desc_col, type_col]).copy()
 
-    # Combine Subject + Description for improved context
+   
     if 'Ticket Subject' in df.columns and 'Ticket Description' in df.columns:
         df['Full_Text'] = df['Ticket Subject'].fillna('') + " - " + df['Ticket Description'].fillna('')
     else:
@@ -42,7 +39,7 @@ def fetch_kaggle_dataset():
 
     df['Ticket Type'] = df[type_col].astype(str)
 
-    # Priority mapping logic from Kaggle dataset
+    
     if prio_col in df.columns and df[prio_col].nunique() > 1:
         df['Ticket Priority'] = df[prio_col].astype(str)
     else:
@@ -58,7 +55,7 @@ def fetch_kaggle_dataset():
     return df
 
 
-# Standard NLP Stopwords List
+
 STOPWORDS = {
     'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at', 
     'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'could', 'did', 'do', 
@@ -89,24 +86,22 @@ def filter_rare_classes(X, y, min_samples=2):
     return X[mask], y[mask]
 
 
-# ==========================================
-# 2. MODEL TRAINING ON KAGGLE DATASET
-# ==========================================
+
 @st.cache_resource
 def train_kaggle_models():
     df = fetch_kaggle_dataset()
     df['Cleaned_Text'] = df['Full_Text'].apply(clean_text)
 
-    # Feature Extraction
+  
     vectorizer = TfidfVectorizer(max_features=3000, ngram_range=(1, 2), sublinear_tf=True)
     X_tfidf = vectorizer.fit_transform(df['Cleaned_Text'])
 
-    # Category Classification Model
+   
     X_cat_f, y_cat_f = filter_rare_classes(pd.Series(range(X_tfidf.shape[0])), df['Ticket Type'], min_samples=2)
     cat_model = LogisticRegression(max_iter=1000, class_weight='balanced')
     cat_model.fit(X_tfidf[X_cat_f.values], y_cat_f)
 
-    # Priority Classification Model
+
     X_prio_f, y_prio_f = filter_rare_classes(pd.Series(range(X_tfidf.shape[0])), df['Ticket Priority'], min_samples=2)
     prio_model = RandomForestClassifier(n_estimators=150, random_state=42, class_weight='balanced_subsample')
     prio_model.fit(X_tfidf[X_prio_f.values], y_prio_f)
@@ -114,15 +109,12 @@ def train_kaggle_models():
     return vectorizer, cat_model, prio_model, len(df)
 
 
-# ==========================================
-# 3. STREAMLIT WEB INTERFACE
-# ==========================================
 st.set_page_config(page_title="Support Ticket Classifier", page_icon="🎫")
 
 st.title("🎫 Kaggle Support Ticket Classifier & Prioritizer")
 st.write("Auto-downloading and training live on the **Kaggle Customer Support Ticket Dataset** (`suraj520/customer-support-ticket-dataset`).")
 
-# Reset / Re-train Button
+
 if st.sidebar.button("Re-train & Reset Cache"):
     st.cache_resource.clear()
     st.cache_data.clear()
@@ -150,7 +142,6 @@ if st.button("Classify Ticket", type="primary"):
         category = cat_model.predict(vec)[0]
         priority = prio_model.predict(vec)[0]
 
-        # Override rule for explicit high-priority keywords
         txt_lower = user_ticket.lower()
         if any(w in txt_lower for w in ['urgent', 'crash', 'crashed', 'locked', 'fraud', 'immediately', 'down', 'unauthorized', 'error code']):
             priority = 'High'
@@ -163,7 +154,7 @@ if st.button("Classify Ticket", type="primary"):
         with col2:
             st.metric(label="Predicted Priority", value=str(priority))
 
-        # Class Probability Breakdown Table
+      
         prio_probs = prio_model.predict_proba(vec)[0]
         prio_classes = prio_model.classes_
 
